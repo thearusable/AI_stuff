@@ -1,0 +1,114 @@
+###############################################################################
+# 1) PersistentVolumeClaim for "open-webui"
+###############################################################################
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: open-webui-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+###############################################################################
+# 2) Deployment for "open-webui"
+###############################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open-webui
+  template:
+    metadata:
+      labels:
+        app: open-webui
+    spec:
+      containers:
+        - name: open-webui
+          image: "ghcr.io/open-webui/open-webui:main"
+          imagePullPolicy: Always
+          env:
+            - name: OLLAMA_BASE_URL
+              value: "http://host.docker.internal:11434"
+            - name: WEBUI_SECRET_KEY
+              value: ""
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: open-webui-storage
+              mountPath: "/app/backend/data"
+      volumes:
+        - name: open-webui-storage
+          persistentVolumeClaim:
+            claimName: open-webui-pvc
+      restartPolicy: Always
+
+---
+###############################################################################
+# 3) Service for "open-webui"
+###############################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui-service
+spec:
+  selector:
+    app: open-webui
+  type: NodePort
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+
+---
+###############################################################################
+# 4) Deployment for "kokoro-fastapi-cpu"
+###############################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kokoro-fastapi-cpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kokoro-fastapi-cpu
+  template:
+    metadata:
+      labels:
+        app: kokoro-fastapi-cpu
+    spec:
+      containers:
+        - name: kokoro-fastapi-cpu
+          image: ghcr.io/remsky/kokoro-fastapi-cpu
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8880
+      restartPolicy: Always
+
+---
+###############################################################################
+# 5) Service for "kokoro-fastapi-cpu"
+###############################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: kokoro-fastapi-cpu-service
+spec:
+  selector:
+    app: kokoro-fastapi-cpu
+  type: NodePort
+  ports:
+    - name: http
+      port: 8880
+      targetPort: 8880
+      # NodePort range is typically 30000-32767
+      nodePort: 30081
